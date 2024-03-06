@@ -5,7 +5,13 @@
 #include <vector>
 using namespace std;
 
-unsigned int charset_to_int(string ch, size_t offset, bool flip = false);
+unsigned int charset_to_int(vector<char> &pack_data, size_t pos, size_t end_pos, bool flip = false);
+
+// struct IP
+// {
+//     IP(){}
+//     IP(string )
+// };
 
 struct Packet
 {
@@ -13,51 +19,39 @@ struct Packet
     {
         ver = 0;
     }
-    Packet(string pack_data)
+    Packet(vector<char> &pack_data, size_t pos, size_t end_pos)
     {
-        ver = charset_to_int(pack_data.substr(12, 2), 2);
-    }
-    void assign_info(string pack_data)
-    {
-        ver = charset_to_int(pack_data.substr(12, 2), 2);
-        return;
+        ver = charset_to_int(pack_data, pos + 12, pos + 13);
     }
     unsigned int ver;
 };
 
-unsigned int charset_to_int(string ch, size_t offset, bool flip /*= false*/)
+unsigned int charset_to_int(vector<char> &pack_data, size_t pos, size_t end_pos, bool flip /*= false*/)
 {
     unsigned int sum = 0;
     if (flip)
     {
-        for (int i = 0; i < offset; ++i)
+        for (int i = end_pos; i >= (int)pos; --i)
         {
-            sum = sum | (unsigned char)ch[i] << (i * 8);
+            char tmp = pack_data[i];
+            sum = sum | (unsigned char)pack_data[i] << ((i - pos) * 8);
         }
     }
     else
     {
-        for (int i = 0; i < offset; ++i)
+        for (int i = pos; i <= (int)end_pos; ++i)
         {
-            sum = sum | (unsigned char)ch[offset - 1 - i] << (i * 8);
+            sum = sum | (unsigned char)pack_data[i] << ((end_pos - i) * 8);
         }
     }
     return sum;
-}
-
-Packet *resize(Packet *mem, unsigned size, unsigned new_size)
-{
-    Packet *new_mem = new Packet[new_size];
-    std::copy(mem, mem + std::min(size, new_size), new_mem);
-    delete[] mem;
-    return new_mem;
 }
 
 int main()
 {
     ifstream file;
     // file.open("C:\\HDD_slow\\docs\\c++\\preinterview\\packets.sig", std::ios::in | std::ios::binary);
-    file.open("D:\\Docs\\c++\\preinterview\\packets.sig", std::ios::in | std::ios::binary);
+    file.open("D:\\Docs\\c++\\preinterview\\packets.sig", ios::in | ios::binary);
     size_t size_len = 2;
 
     if (!file)
@@ -66,23 +60,37 @@ int main()
         return -1;
     }
 
-    string whole_file; // переменная для всего файла
+    // string whole_file; // переменная для всего файла
+    // file.seekg(0, ios::end);
+    // whole_file.reserve(file.tellg());
+    // size_t whole_file_len = file.tellg();
+    // file.seekg(0, ios::beg);
+    // whole_file.assign(istreambuf_iterator<char>(file), istreambuf_iterator<char>()); // присвоение строке символов из файла
+    vector<char> whole_file;
+    char current_ch = 0;
+    // while (file >> current_ch)
+    // {
+    //     whole_file.push_back(current_ch);
+    // }
     file.seekg(0, std::ios::end);
-    whole_file.reserve(file.tellg());
-    size_t whole_file_len = file.tellg();
-    file.seekg(0, std::ios::beg);
-    whole_file.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()); // присвоение строке символов из файла
+    std::streampos length(file.tellg());
+    if (length)
+    {
+        file.seekg(0, std::ios::beg);
+        whole_file.resize(static_cast<std::size_t>(length));
+        file.read(&whole_file.front(), static_cast<std::size_t>(length));
+    }
 
     size_t pos = 0;
     size_t data_len = 0;
 
     vector<Packet> packs;
 
-    for (int i = 0; pos < whole_file_len; ++i)
+    while (pos < whole_file.size())
     {
-        data_len = (size_t)charset_to_int(whole_file.substr(pos, size_len), size_len, true);
+        data_len = (size_t)charset_to_int(whole_file, pos, pos + size_len - 1, true);
         pos = pos + size_len;
-        packs.push_back(Packet(whole_file.substr(pos, data_len)));
+        packs.push_back(Packet(whole_file, pos, pos + data_len - 1));
         pos = pos + data_len;
     }
 

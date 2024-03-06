@@ -2,6 +2,7 @@
 #include <fstream>
 #include <string>
 #include <algorithm>
+#include <vector>
 using namespace std;
 
 unsigned int charset_to_int(string ch, size_t offset, bool flip = false);
@@ -12,16 +13,19 @@ struct Packet
     {
         ver = 0;
     }
+    Packet(string pack_data)
+    {
+        ver = charset_to_int(pack_data.substr(12, 2), 2);
+    }
     void assign_info(string pack_data)
     {
         ver = charset_to_int(pack_data.substr(12, 2), 2);
-        string tmp = pack_data.substr(12, 3);
         return;
     }
     unsigned int ver;
 };
 
-unsigned int charset_to_int(string ch, size_t offset, bool flip = false)
+unsigned int charset_to_int(string ch, size_t offset, bool flip /*= false*/)
 {
     unsigned int sum = 0;
     if (flip)
@@ -37,8 +41,8 @@ unsigned int charset_to_int(string ch, size_t offset, bool flip = false)
         {
             sum = sum | (unsigned char)ch[offset - 1 - i] << (i * 8);
         }
-        return sum;
     }
+    return sum;
 }
 
 Packet *resize(Packet *mem, unsigned size, unsigned new_size)
@@ -72,41 +76,25 @@ int main()
     size_t pos = 0;
     size_t data_len = 0;
 
-    size_t pack_arr_len = 50;
-    size_t pack_arr_increment = 50;
-    Packet *packs = new Packet[pack_arr_len];
+    vector<Packet> packs;
 
     for (int i = 0; pos < whole_file_len; ++i)
     {
         data_len = (size_t)charset_to_int(whole_file.substr(pos, size_len), size_len, true);
         pos = pos + size_len;
-        if (i == pack_arr_len)
-        {
-            packs = resize(packs, pack_arr_len, pack_arr_len + pack_arr_increment);
-            pack_arr_len = pack_arr_len + pack_arr_increment;
-        }
-        packs[i].assign_info(whole_file.substr(pos, data_len));
+        packs.push_back(Packet(whole_file.substr(pos, data_len)));
         pos = pos + data_len;
-
-        std::cout << packs[i].ver;
     }
 
     int count_ipv4 = 0;
 
-    for (int i = 0; i < pack_arr_len; ++i)
+    for (int i = 0; i < packs.size(); ++i)
     {
-        if (packs[i].ver == 0)
-        {
-            packs = resize(packs, pack_arr_len, i);
-            pack_arr_len = i;
-            break;
-        }
         if (packs[i].ver == 2048)
             ++count_ipv4;
     }
 
-    cout << count_ipv4 << " " << pack_arr_len;
+    cout << count_ipv4 << " " << packs.size();
 
-    delete[] packs;
     return 0;
 }

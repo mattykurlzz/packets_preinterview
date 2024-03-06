@@ -4,7 +4,7 @@
 #include <algorithm>
 using namespace std;
 
-unsigned int charset_to_int(string ch, size_t offset);
+unsigned int charset_to_int(string ch, size_t offset, bool flip = false);
 
 struct Packet
 {
@@ -14,22 +14,31 @@ struct Packet
     }
     void assign_info(string pack_data)
     {
-        ver = charset_to_int(pack_data, 1) >> 4;
+        ver = charset_to_int(pack_data.substr(12, 2), 2);
+        string tmp = pack_data.substr(12, 3);
         return;
     }
     unsigned int ver;
 };
 
-unsigned int charset_to_int(string ch, size_t offset)
+unsigned int charset_to_int(string ch, size_t offset, bool flip = false)
 {
     unsigned int sum = 0;
-    for (int i = 0; i < offset; ++i)
+    if (flip)
     {
-        // cout << (int)ch[offset - 1 - i] << ch[offset - 1 - i] << sizeof(ch[offset - 1 - i]) << endl;
-        unsigned char tmp = ch[offset - 1 - i];
-        sum = sum | (unsigned char)ch[offset - 1 - i] << (i * 8);
+        for (int i = 0; i < offset; ++i)
+        {
+            sum = sum | (unsigned char)ch[i] << (i * 8);
+        }
     }
-    return sum;
+    else
+    {
+        for (int i = 0; i < offset; ++i)
+        {
+            sum = sum | (unsigned char)ch[offset - 1 - i] << (i * 8);
+        }
+        return sum;
+    }
 }
 
 Packet *resize(Packet *mem, unsigned size, unsigned new_size)
@@ -43,7 +52,8 @@ Packet *resize(Packet *mem, unsigned size, unsigned new_size)
 int main()
 {
     ifstream file;
-    file.open("C:\\HDD_slow\\docs\\c++\\preinterview\\packets.sig", std::ios::in | std::ios::binary);
+    // file.open("C:\\HDD_slow\\docs\\c++\\preinterview\\packets.sig", std::ios::in | std::ios::binary);
+    file.open("D:\\Docs\\c++\\preinterview\\packets.sig", std::ios::in | std::ios::binary);
     size_t size_len = 2;
 
     if (!file)
@@ -68,7 +78,7 @@ int main()
 
     for (int i = 0; pos < whole_file_len; ++i)
     {
-        data_len = (size_t)charset_to_int(whole_file.substr(pos, size_len), size_len);
+        data_len = (size_t)charset_to_int(whole_file.substr(pos, size_len), size_len, true);
         pos = pos + size_len;
         if (i == pack_arr_len)
         {
@@ -77,8 +87,25 @@ int main()
         }
         packs[i].assign_info(whole_file.substr(pos, data_len));
         pos = pos + data_len;
+
         std::cout << packs[i].ver;
     }
+
+    int count_ipv4 = 0;
+
+    for (int i = 0; i < pack_arr_len; ++i)
+    {
+        if (packs[i].ver == 0)
+        {
+            packs = resize(packs, pack_arr_len, i);
+            pack_arr_len = i;
+            break;
+        }
+        if (packs[i].ver == 2048)
+            ++count_ipv4;
+    }
+
+    cout << count_ipv4 << " " << pack_arr_len;
 
     delete[] packs;
     return 0;

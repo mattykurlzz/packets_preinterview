@@ -2,84 +2,202 @@
 #include <fstream>
 #include <string>
 #include <algorithm>
-using namespace std;
+#include <vector>
+#include <cstdint>
+#include <iomanip>
 
-unsigned int charset_to_int(string ch, size_t offset);
+uint32_t convertPackDataToUint(std::vector<char> &packData, size_t cursorPos, size_t endPos, bool flip = false);
 
-struct Packet
+uint8_t cutoutByte(uint64_t sequence, size_t place) { return uint8_t(sequence << (8 * place) >> 56); }
+
+class IpAdr
 {
-    Packet()
+    protected:
+    friend class packet;
+    IpAdr() { ip = 0; }
+    IpAdr(std::vector<char> &ipSeq, int ipStart)
     {
-        ver = 0;
+        ip = convertPackDataToUint(ipSeq, ipStart + 2, ipStart + 5);
     }
-    void assign_info(string pack_data)
-    {
-        ver = charset_to_int(pack_data, 1) >> 4;
-        return;
-    }
-    unsigned int ver;
+    uint32_t ip;
 };
 
-unsigned int charset_to_int(string ch, size_t offset)
+class packet
+{
+public:
+    static size_t getSizeLength() { return 2; }
+    // returns byte length of packet size preamble
+
+    static uint32_t getVersion(std::vector<char> &packData, size_t cursorPos) 
+    { 
+        return convertPackDataToUint(packData, cursorPos + 12, cursorPos + 13); 
+    }
+
+    static uint64_t getIpSignature(std::vector<char> &packData, size_t cursorPos)
+    // returns both destination&sender IPs stored in one 64-bit int
+    {
+        IpAdr source(packData, cursorPos + 6);
+        IpAdr destination(packData, cursorPos);
+        return (uint64_t)destination.ip << 32 | (uint64_t)source.ip;
+    }
+};
+
+class Packet : public packet
+{
+public:
+    Packet()
+    {
+        ver_ = 0;
+        transCtr_ = 1;
+    }
+    Packet(std::vector<char> &packData, size_t cursorPos /*, size_t endPos*/)
+    {
+        ver_ = packet::getVersion(packData, cursorPos);
+        ipSig_ = packet::getIpSignature(packData, cursorPos);
+        transCtr_ = 1;
+    }
+
+    std::string getIpToString()
+    // returns string of type "sender -> destintion" for current packet IPs
+    {
+        std::string toReturn = std::to_string(cutoutByte(ipSig_, 4));
+        for (int i = 5; i < 8; ++i)
+        {
+            toReturn = toReturn + "." + std::to_string(cutoutByte(ipSig_, i));
+        }
+        toReturn = toReturn + " -> " + std::to_string(cutoutByte(ipSig_, 0));
+        for (int i = 1; i < 4; ++i)
+        {
+            toReturn = toReturn + "." + std::to_string(cutoutByte(ipSig_, i));
+        }
+        return toReturn;
+    }
+
+    unsigned int getVersion() { return ver_; }
+
+    uint64_t getIpSignature() { return ipSig_; }
+
+    void incrementTransitCtr()
+    {
+        ++transCtr_;
+        return;
+    }
+
+    unsigned getTransitCtr() { return transCtr_; }
+
+private:
+    unsigned int ver_;
+    uint64_t ipSig_;
+    unsigned int transCtr_;
+};
+
+uint32_t convertPackDataToUint(std::vector<char> &packData, size_t cursorPos, size_t endPos, bool flip /*= false*/)
+// converts given char(byte) vector sequence into a 32-bit int 
 {
     unsigned int sum = 0;
-    for (int i = 0; i < offset; ++i)
+    if (flip)
     {
-        // cout << (int)ch[offset - 1 - i] << ch[offset - 1 - i] << sizeof(ch[offset - 1 - i]) << endl;
-        unsigned char tmp = ch[offset - 1 - i];
-        sum = sum | (unsigned char)ch[offset - 1 - i] << (i * 8);
+        for (int i = endPos; i >= (int)cursorPos; --i)
+        {
+            char tmp = packData[i];
+            sum = sum | (unsigned char)packData[i] << ((i - cursorPos) * 8);
+        }
+    }
+    else
+    {
+        for (int i = cursorPos; i <= (int)endPos; ++i)
+        {
+            sum = sum | (unsigned char)packData[i] << ((endPos - i) * 8);
+        }
     }
     return sum;
 }
 
-Packet *resize(Packet *mem, unsigned size, unsigned new_size)
-{
-    Packet *new_mem = new Packet[new_size];
-    std::copy(mem, mem + std::min(size, new_size), new_mem);
-    delete[] mem;
-    return new_mem;
-}
-
 int main()
 {
-    ifstream file;
-    file.open("C:\\HDD_slow\\docs\\c++\\preinterview\\packets.sig", std::ios::in | std::ios::binary);
-    size_t size_len = 2;
+    std::ifstream file;
+    std::string inputFile;
+    std::vector<char> wholeFile;
+    size_t cursorPos = 0;
+    size_t dataLen = 0;
+    std::vector<Packet> ipv4Packs; // вектор только для пакетов v4, согласно
+// задаче. если надо хранить другие пакеты, дополняется добавлением вектора other и записи туда при непрохождении проверки на v4
+    std::vector<Packet>::iterator packsIter;
+    int nIpv4Packs = 0;
+    int nOtherPacks = 0;
 
-    if (!file)
+    std::cin >> inputFile; // getting the file
+    file.open(inputFile, std::ios::in | std::ios::binary); // D:\Docs\c++\preinterview\packets.sig
+
+    if (!file)// check if file opened alright
     {
-        cout << "File didn't open\n\n";
+        std::cout << "File didn't open\n\n";
         return -1;
     }
 
-    string whole_file; // переменная для всего файла
-    file.seekg(0, std::ios::end);
-    whole_file.reserve(file.tellg());
-    size_t whole_file_len = file.tellg();
-    file.seekg(0, std::ios::beg);
-    whole_file.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()); // присвоение строке символов из файла
+    file.seekg(0, std::ios::end); 
+    std::streampos length(file.tellg());
+    // set length of the file
 
-    size_t pos = 0;
-    size_t data_len = 0;
-
-    size_t pack_arr_len = 50;
-    size_t pack_arr_increment = 50;
-    Packet *packs = new Packet[pack_arr_len];
-
-    for (int i = 0; pos < whole_file_len; ++i)
+    if (length)
+    // if file contains anything, char vector gets resized after file length and read into
     {
-        data_len = (size_t)charset_to_int(whole_file.substr(pos, size_len), size_len);
-        pos = pos + size_len;
-        if (i == pack_arr_len)
-        {
-            packs = resize(packs, pack_arr_len, pack_arr_len + pack_arr_increment);
-            pack_arr_len = pack_arr_len + pack_arr_increment;
-        }
-        packs[i].assign_info(whole_file.substr(pos, data_len));
-        pos = pos + data_len;
-        std::cout << packs[i].ver;
+        file.seekg(0, std::ios::beg);
+        wholeFile.resize(static_cast<std::size_t>(length));
+        file.read(&wholeFile.front(), static_cast<std::size_t>(length));
+    }
+    else 
+    {
+        std::cout << "File is empty\n\n";
+        return -1;
     }
 
-    delete[] packs;
+    while (cursorPos < wholeFile.size())
+    {
+        bool isWritten = false;
+
+        dataLen = (size_t)convertPackDataToUint(wholeFile, cursorPos, cursorPos + Packet::getSizeLength() - 1, true);
+        cursorPos = cursorPos + packet::getSizeLength();
+        packsIter = ipv4Packs.begin();
+
+        if (packet::getVersion(wholeFile, cursorPos) == 2048) 
+        // if current scanned packet version is IPv4, ++counter and add to ipv4 packs list
+        {
+            ++nIpv4Packs;
+            for (; packsIter != ipv4Packs.end(); packsIter++)
+            {
+                if (packsIter->getIpSignature() == packet::getIpSignature(wholeFile, cursorPos))
+                {
+                    packsIter->incrementTransitCtr();
+                    isWritten = true;
+                    break;
+                }
+            }
+            if (!isWritten)
+            // if current ipv4 packet doesn't repeats IP signature of previous one, it gets pushed into a vector
+            {
+                ipv4Packs.push_back(Packet(wholeFile, cursorPos));
+            }
+        }
+        else
+        {
+            ++nOtherPacks;
+        }
+        cursorPos = cursorPos + dataLen;
+    }
+
+    // outputting the results
+    packsIter = ipv4Packs.begin();
+    std::cout << std::setw(40) << "Packets containing IPv4:"
+         << "\t" << nIpv4Packs << std::endl
+         << std::setw(40) << "Packets without IPv4:"
+         << "\t" << nOtherPacks << std::endl
+         << std::endl;
+    for (; packsIter != ipv4Packs.end(); packsIter++)
+    {
+        std::cout << std::setw(40) << packsIter->getIpToString()
+             << "\t" << packsIter->getTransitCtr() << std::endl;
+    }
+
     return 0;
 }

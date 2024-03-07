@@ -3,15 +3,20 @@
 #include <string>
 #include <algorithm>
 #include <vector>
+#include <cstdint>
 using namespace std;
 
 unsigned int charset_to_int(vector<char> &pack_data, size_t pos, size_t end_pos, bool flip = false);
 
-// struct IP
-// {
-//     IP(){}
-//     IP(string )
-// };
+struct IP_adr
+{
+    IP_adr() { IP = 0; }
+    IP_adr(vector<char> &ip_seq, size_t ip_start)
+    {
+        IP = charset_to_int(ip_seq, ip_start + 2, ip_start + 5);
+    }
+    uint32_t IP;
+};
 
 struct Packet
 {
@@ -22,8 +27,12 @@ struct Packet
     Packet(vector<char> &pack_data, size_t pos, size_t end_pos)
     {
         ver = charset_to_int(pack_data, pos + 12, pos + 13);
+        source = IP_adr(pack_data, pos + 6);
+        destination = IP_adr(pack_data, pos);
     }
     unsigned int ver;
+    IP_adr source;
+    IP_adr destination;
 };
 
 unsigned int charset_to_int(vector<char> &pack_data, size_t pos, size_t end_pos, bool flip /*= false*/)
@@ -60,18 +69,8 @@ int main()
         return -1;
     }
 
-    // string whole_file; // переменная для всего файла
-    // file.seekg(0, ios::end);
-    // whole_file.reserve(file.tellg());
-    // size_t whole_file_len = file.tellg();
-    // file.seekg(0, ios::beg);
-    // whole_file.assign(istreambuf_iterator<char>(file), istreambuf_iterator<char>()); // присвоение строке символов из файла
     vector<char> whole_file;
     char current_ch = 0;
-    // while (file >> current_ch)
-    // {
-    //     whole_file.push_back(current_ch);
-    // }
     file.seekg(0, std::ios::end);
     std::streampos length(file.tellg());
     if (length)

@@ -4,14 +4,17 @@
 #include <algorithm>
 #include <vector>
 #include <cstdint>
+#include <iomanip>
 using namespace std;
 
 unsigned int charset_to_int(vector<char> &pack_data, size_t pos, size_t end_pos, bool flip = false);
 
+uint8_t cutout_byte(uint64_t sequence, size_t place) { return uint8_t(sequence << (8 * place) >> 56); }
+
 struct IP_adr
 {
     IP_adr() { IP = 0; }
-    IP_adr(vector<char> &ip_seq, size_t ip_start)
+    IP_adr(vector<char> &ip_seq, int ip_start)
     {
         IP = charset_to_int(ip_seq, ip_start + 2, ip_start + 5);
     }
@@ -37,6 +40,21 @@ struct Packet
         IP_adr source(pack_data, pos + 6);
         IP_adr destination(pack_data, pos);
         return (uint64_t)destination.IP << 32 | (uint64_t)source.IP;
+    }
+
+    string get_string_IPs()
+    {
+        string to_return = to_string(cutout_byte(IP_sig, 4));
+        for (int i = 5; i < 8; ++i)
+        {
+            to_return = to_return + "." + to_string(cutout_byte(IP_sig, i));
+        }
+        to_return = to_return + " -> " + to_string(cutout_byte(IP_sig, 0));
+        for (int i = 1; i < 4; ++i)
+        {
+            to_return = to_return + "." + to_string(cutout_byte(IP_sig, i));
+        }
+        return to_return;
     }
 
     static unsigned int get_version(vector<char> &pack_data, size_t pos) { return charset_to_int(pack_data, pos + 12, pos + 13); }
@@ -129,8 +147,17 @@ int main()
         pos = pos + data_len;
     }
 
-    // packs_iter = IPv4_packs.begin();
-    // if (Packet::get_version(whole_file, pos) == 2048)
+    packs_iter = IPv4_packs.begin();
+    cout << setw(40) << "Packets containing IPv4:"
+         << "\t" << count_ipv4 << endl
+         << setw(40) << "Packets without IPv4:"
+         << "\t" << count_other << endl
+         << endl;
+    for (; packs_iter != IPv4_packs.end(); packs_iter++)
+    {
+        cout << setw(40) << packs_iter->get_string_IPs()
+             << "\t" << packs_iter->transmissions_counter << endl;
+    }
 
     return 0;
 }

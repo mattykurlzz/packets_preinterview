@@ -89,7 +89,9 @@ int main()
 {
     ifstream file;
     // file.open("C:\\HDD_slow\\docs\\c++\\preinterview\\packets.sig", std::ios::in | std::ios::binary);
-    file.open("D:\\Docs\\c++\\preinterview\\packets.sig", ios::in | ios::binary);
+    string inputfile;
+    cin >> inputfile;
+    file.open(inputfile, ios::in | ios::binary); // D:\Docs\c++\preinterview\packets.sig
     size_t size_len = 2;
 
     if (!file)

@@ -23,16 +23,27 @@ struct Packet
     Packet()
     {
         ver = 0;
+        transmissions_counter = 1;
     }
-    Packet(vector<char> &pack_data, size_t pos, size_t end_pos)
+    Packet(vector<char> &pack_data, size_t pos /*, size_t end_pos*/)
     {
-        ver = charset_to_int(pack_data, pos + 12, pos + 13);
-        source = IP_adr(pack_data, pos + 6);
-        destination = IP_adr(pack_data, pos);
+        ver = get_version(pack_data, pos);
+        IP_sig = get_IP_signature(pack_data, pos);
+        transmissions_counter = 1;
     }
+
+    static uint64_t get_IP_signature(vector<char> &pack_data, size_t pos)
+    {
+        IP_adr source(pack_data, pos + 6);
+        IP_adr destination(pack_data, pos);
+        return (uint64_t)destination.IP << 32 | (uint64_t)source.IP;
+    }
+
+    static unsigned int get_version(vector<char> &pack_data, size_t pos) { return charset_to_int(pack_data, pos + 12, pos + 13); }
+
     unsigned int ver;
-    IP_adr source;
-    IP_adr destination;
+    uint64_t IP_sig;
+    unsigned int transmissions_counter;
 };
 
 unsigned int charset_to_int(vector<char> &pack_data, size_t pos, size_t end_pos, bool flip /*= false*/)
@@ -83,25 +94,43 @@ int main()
     size_t pos = 0;
     size_t data_len = 0;
 
-    vector<Packet> packs;
+    vector<Packet> IPv4_packs; // вектор только для пакетов в4, согласно задаче. если надо хранить другие пакеты, масштабируется добавлением вектора other и записи туда при непрохождении проверки на в4
+    vector<Packet>::iterator packs_iter;
+    int count_ipv4 = 0;
+    int count_other = 0;
 
     while (pos < whole_file.size())
     {
+        bool v4_written_flag = false;
         data_len = (size_t)charset_to_int(whole_file, pos, pos + size_len - 1, true);
         pos = pos + size_len;
-        packs.push_back(Packet(whole_file, pos, pos + data_len - 1));
+        packs_iter = IPv4_packs.begin();
+        if (Packet::get_version(whole_file, pos) == 2048)
+        {
+            ++count_ipv4;
+            for (; packs_iter != IPv4_packs.end(); packs_iter++)
+            {
+                if (packs_iter->IP_sig == Packet::get_IP_signature(whole_file, pos))
+                {
+                    packs_iter->transmissions_counter++;
+                    v4_written_flag = true;
+                    break;
+                }
+            }
+            if (!v4_written_flag)
+            {
+                IPv4_packs.push_back(Packet(whole_file, pos));
+            }
+        }
+        else
+        {
+            ++count_other;
+        }
         pos = pos + data_len;
     }
 
-    int count_ipv4 = 0;
-
-    for (int i = 0; i < packs.size(); ++i)
-    {
-        if (packs[i].ver == 2048)
-            ++count_ipv4;
-    }
-
-    cout << count_ipv4 << " " << packs.size();
+    // packs_iter = IPv4_packs.begin();
+    // if (Packet::get_version(whole_file, pos) == 2048)
 
     return 0;
 }
